@@ -1,0 +1,16 @@
+<?php
+
+/** @var \Illuminate\Database\Eloquent\Factory $factory */
+
+use Faker\Generator as Faker;
+use {{ namespacedModel }};
+
+/**
+ * {{ class }} Factory
+ * @author TestMate <dev@testmate.org>
+ */
+$factory->define({{ model }}::class, function (Faker $faker) {
+    return [
+        //
+    ];
+});
