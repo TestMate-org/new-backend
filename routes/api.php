@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ItemResponseController;
+use App\Http\Controllers\StudentReportController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -163,6 +164,9 @@ Route::group(['prefix' => 'v1', 'namespace' => 'Api\v1'], function () {
         Route::get('group_members', 'GroupMemberController@index');
         Route::post('group_members', 'GroupMemberController@store');
         Route::delete('group_members/{id}', 'GroupMemberController@destroy');
+
+        Route::get('/irt-chart/{soal_id}', [ItemResponseController::class, 'getIrtChart']);
+        Route::get('/student-report/{peserta_id}', [StudentReportController::class, 'individualReport']);
     });
 });
 

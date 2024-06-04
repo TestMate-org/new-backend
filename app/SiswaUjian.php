@@ -61,4 +61,13 @@ class SiswaUjian extends Model
     {
         return $this->hasOne('App\HasilUjian', 'peserta_id', 'peserta_id');
     }
+
+    /**
+     * [jadwal description]
+     * @return [type] [description]
+     */
+    public function jadwal()
+    {
+        return $this->hasOne('App\Jadwal', 'id', 'jadwal_id');
+    }
 }

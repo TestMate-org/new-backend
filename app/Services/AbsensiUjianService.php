@@ -70,7 +70,7 @@ class AbsensiUjianService
         $this->pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
         $pdf = $this->pdf;
         $pdf->SetCreator(PDF_CREATOR);
-        $pdf->SetAuthor('TestMate CBT');
+        $pdf->SetAuthor('TestMate CAT');
         $pdf->SetTitle('ABSENSI ' . $event->name . ' SESI ' . $this->sesi);
 
         $pdf->SetHeaderMargin(PDF_MARGIN_HEADER);

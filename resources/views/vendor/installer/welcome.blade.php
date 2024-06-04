@@ -5,7 +5,7 @@
 @endsection
 
 @section('title')
-    TestMateCBT Installer
+    TestMateCAT Installer
 @endsection
 
 @section('container')

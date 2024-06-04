@@ -53,6 +53,7 @@ class UjianController extends Controller
         $peserta = request()->get('peserta-auth');
 
         $find = $jawabanPesertaService->getJawaban($request->jawaban_id);
+        $soal = Soal::find($find->soal_id);
 
         if (!$find) {
             return SendResponse::badRequest(UjianConstant::NO_WORKING_ANSWER_FOUND);
@@ -62,6 +63,93 @@ class UjianController extends Controller
         # yang sedang dikerjakan pada hari ini
         # yang mana jadwal tersebut sedang aktif dan tanggal pengerjaannya hari ini
         $ujian = $ujianService->onProgressToday($peserta->id);
+
+        // #Calculate IRT
+        // #Calculate IRT
+        // #Calculate IRT
+        // function calculate3PLProbability($theta, $a, $b, $c)
+        // {
+        //     $e = exp(-$a * ($theta - $b));
+        //     $p = $c + (1 - $c) / (1 + $e);
+        //     return $p;
+        // }
+
+        // Parameters for question
+        $a = $soal->a; // Discrimination
+        $b = $soal->b; // Difficulty
+        $c = $soal->c; // Guessing
+
+        // Data awal (contoh)
+        $responses = [
+            [-1.0, 1],
+            [0.0, 0],
+            [1.0, 1],
+            // Tambahkan data lainnya sesuai kebutuhan
+        ];
+
+        // Responses is only theta_akhir and is_correct and to array
+        $responses = JawabanPeserta::where('jadwal_id', $find->jadwal_id)
+            ->get(['theta_akhir', 'iscorrect'])
+            ->map(function ($response) {
+                return [(float) $response->theta_akhir, (int) $response->is_correct];
+            })
+            ->toArray();
+
+        $responses = $responses ?: [];
+
+        // Kalibrasi parameter
+        list($calibrated_a, $calibrated_b, $calibrated_c) = $this->calibrateIRT($a, $b, $c, $responses);
+
+        // Assuming an initial ability level for Andi
+        $lastThetaStudentAbility = JawabanPeserta::where('peserta_id', $peserta->id)
+            ->where('jadwal_id', $find->jadwal_id)
+            ->orderBy('created_at', 'desc')
+            ->first()
+            ->theta_akhir;
+
+        $studentAbility = $lastThetaStudentAbility ? $lastThetaStudentAbility : 0;
+//
+        $theta_values = JawabanPeserta::where('peserta_id', $peserta->id)
+            ->where('jadwal_id', $find->jadwal_id)
+            ->pluck('theta_akhir')
+            ->toArray();
+
+        $probabilities = array_map(function ($theta) use ($a, $b, $c) {
+            return $this->irtProbability($a, $b, $c, $theta);
+        }, $theta_values);
+
+        // $information_values = array_map(function ($p) use ($a, $c) {
+        //     return $this->itemInformation($a, $p, $c);
+        // }, $probabilities);
+        //
+
+        // Calculate the probability of Andi answering correctly
+        // $thetaAkhir = calculate3PLProbability($studentAbility, $calibrated_a, $calibrated_b, $calibrated_c);
+        $jawabanPeserta = JawabanPeserta::findOrFail($find->id);
+
+        $countHowMuchSoalAlreadyShow = JawabanPeserta::where([
+            'peserta_id' => $peserta->id,
+            'jadwal_id' => $jawabanPeserta->jadwal_id,
+            'banksoal_id' => $jawabanPeserta->banksoal_id,
+        ])->count();
+
+        $jawabanPeserta->update([
+            'theta_akhir' => $theta_values[0],
+            // 'probabilities' => $probabilities[0],
+            // 'information_values' => $information_values[0],
+            'urutan' => $countHowMuchSoalAlreadyShow,
+        ]);
+
+        $soal = Soal::find($find->soal_id);
+        $soal->update([
+            'a_calibrated' => $calibrated_a,
+            'b_calibrated' => $calibrated_b,
+            'c_calibrated' => $calibrated_c,
+        ]);
+
+        #Calculate IRT
+        #Calculate IRT
+        #Calculate IRT
 
         if (!$ujian) {
             return SendResponse::badRequest(UjianConstant::NO_WORKING_UJIAN_FOUND);
@@ -107,6 +195,51 @@ class UjianController extends Controller
 
         # Jika yang dikirimkan adalah pilihan ganda
         return PilihanGandaService::setJawab($request, $find);
+
+    }
+
+    private function irtProbability($a, $b, $c, $theta)
+    {
+        return $c + (1 - $c) / (1 + exp(-$a * ($theta - $b)));
+    }
+
+    private function calibrateIRT($a, $b, $c, $responses)
+    {
+        $learning_rate = 0.01; // Kecepatan belajar untuk pembaruan parameter
+        $iterations = 100; // Jumlah iterasi
+
+        // Inisialisasi parameter a, b, dan c
+        // $a = 1.0;
+        // $b = 0.0;
+        // $c = 0.0;
+
+        for ($i = 0; $i < $iterations; $i++) {
+            $a_grad = 0;
+            $b_grad = 0;
+            $c_grad = 0;
+
+            foreach ($responses as $response) {
+                $theta = $response[0];
+                $observed = $response[1];
+                $expected = $this->irtProbability($a, $b, $c, $theta);
+
+                $a_grad += ($observed - $expected) * $expected * (1 - $expected) * ($theta - $b);
+                $b_grad += -($observed - $expected) * $expected * (1 - $expected) * $a;
+                $c_grad += ($observed - $expected) * (1 - $expected);
+            }
+
+            // Pembaruan parameter
+            $a += $learning_rate * $a_grad;
+            $b += $learning_rate * $b_grad;
+            $c += $learning_rate * $c_grad;
+        }
+
+        return [$a, $b, $c];
+    }
+
+    private function itemInformation($a, $p, $c)
+    {
+        return ($a ** 2 * (1 - $p) * ($p - $c) * ($p - $c)) / ($p * (1 - $c) * (1 - $c));
     }
 
     /**
@@ -261,10 +394,7 @@ class UjianController extends Controller
             ->where('id', $bank_soal_id)
             ->first();
 
-        // $index = $request->index;
         $jawaban_id = $request->jawaban_id;
-        // $soal_id = $request->soal_id;
-        // $user_id = $request->user_id;
 
         $ujian_siswa = $ujianService->onProgressToday($peserta->id);
         if (!$ujian_siswa) {
@@ -272,13 +402,13 @@ class UjianController extends Controller
         }
 
         $jawabanPeserta = JawabanPeserta::findOrFail($jawaban_id);
-        // $currentAbility = $jawabanPeserta->b ?? 0;
+        $jawabanPesertaNow = $jawabanPeserta;
         $jadwal = Jadwal::findOrFail($jawabanPeserta->jadwal_id);
 
         # Ambil setting dari jadwal
         $setting = $jadwal->setting;
 
-        $soal_pg = PilihanGandaService::getSoalNext($peserta, $banksoal, $jadwal);
+        $soal_pg = PilihanGandaService::getSoalNext($peserta, $banksoal, $jadwal, $jawabanPesertaNow);
 
         # Gabungkan semua collection dari tipe soal
         $soals = [];
@@ -322,258 +452,7 @@ class UjianController extends Controller
 
         return SendResponse::acceptCustom(['data' => $jawaban_peserta, 'detail' => $ujian_siswa]);
 
-        // $ujian = DB::table('jadwals')
-        //     ->where('id', $jawabanPeserta->jadwal_id)
-        //     ->first();
-        // $setting = json_decode($ujian->setting, true);
-
-        // $soalAlreadyAnsweredIds = JawabanPeserta::where([
-        //     'peserta_id' => $user_id,
-        //     'jadwal_id' => $jawabanPeserta->jadwal_id,
-        //     'banksoal_id' => $bank_soal_id,
-        // ])->pluck('soal_id')->toArray();
-
-        // $pg = DB::table('soals')
-        //     ->whereNotIn('id', $soalAlreadyAnsweredIds)
-        //     ->where([
-        //         'banksoal_id' => $bank_soal_id,
-        //         'tipe_soal' => SoalConstant::TIPE_PG,
-        //     ]);
-
-        // $pg = $pg->inRandomOrder();
-
-        // # Ambil soal sebanyak maximum
-        // $pg = $pg->take(1)->get();
-
-        // $soal_pg = [];
-        // foreach ($pg as $k => $item) {
-        //     $soal = Soal::find($item->id)
-        //         ->whereNotIn('id', $soalAlreadyAnsweredIds)
-        //         ->select(
-        //             'audio',
-        //             'banksoal_id',
-        //             'direction',
-        //             'id',
-        //             'pertanyaan',
-        //             'tipe_soal',
-        //             'layout',
-        //         )
-        //         ->first()->toArray();
-
-        //     $jawabans = JawabanSoal::where('soal_id', $item->id)
-        //         ->select([
-        //             'id',
-        //             'text_jawaban',
-        //             'label_mark',
-        //         ])
-        //         ->get()
-        //         ->toArray();
-        //     $soal['jawabans'] = $jawabans;
-        //     array_push($soal_pg, [
-        //         'id' => Str::uuid()->toString(),
-        //         'peserta_id' => $user_id,
-        //         'banksoal_id' => $bank_soal_id,
-        //         'soal_id' => $item->id,
-        //         'soal' => $soal,
-        //         // 'jawaban' => $jawabans,
-        //         'jawab' => "0",
-        //         // 'b' => $currentAbility,
-        //         'iscorrect' => "0",
-        //         'jadwal_id' => $jawabanPeserta->jadwal_id,
-        //         'ragu_ragu' => "0",
-        //         'esay' => '',
-        //     ]);
-        // }
-
-        // // # Gabungkan semua collection dari tipe soal
-        // $soals = [];
-        // $list = collect([
-        //     '1' => $soal_pg,
-        // ]);
-        // // $soals = $list->collapse();
-        // foreach ($setting['list'] as $value) {
-        //     $soal = $list->get($value['id']);
-        //     if ($soal) {
-        //         $soals = array_merge($soals, $soal);
-        //     }
-        // }
-
-        // $new_soals = [];
-        // $time_offset = 1;
-        // foreach ($soals as $key => $soal) {
-        //     $new_soals[$key] = $soal;
-        //     $new_soals[$key]['created_at'] = now()->addSeconds($time_offset);
-
-        //     $time_offset++;
-        // }
-
-        // # Insert ke database sebagai jawaban siswa
-        // try {
-        //     DB::beginTransaction();
-        //     // var_dump($new_soals);
-        //     // exit;
-        //     DB::table('jawaban_pesertas')->insert($new_soals);
-        //     DB::commit();
-        // } catch (Exception $e) {
-        //     DB::rollBack();
-        //     return SendResponse::internalServerError($e->getMessage());
-        // }
-
-        // foreach ($list as $item) {
-        //     // $jawabans = $item->soal->jawabans;
-        // }
-
-        // $jawabans = $item->soal->jawabans;
-        // var_dump($item);
-        // exit;
-
-        // $result[] = [
-        //     'id' => $item->id,
-        //     'banksoal_id' => $item->banksoal_id,
-        //     'soal_id' => $item->soal_id,
-        //     'jawab' => $item->jawab,
-        //     'esay' => $item->esay,
-        //     'jawab_complex' => json_decode($item->jawab_complex),
-        //     'benar_salah' => $item->benar_salah,
-        //     'setuju_tidak' => $item->setuju_tidak,
-        //     'answered' => $item->answered,
-        //     'soal' => [
-        //         'audio' => $item->soal->audio,
-        //         'banksoal_id' => $item->soal->banksoal_id,
-        //         'direction' => $item->soal->direction,
-        //         'id' => $item->soal->id,
-        //         'jawabans' => $jawabans,
-        //         'pertanyaan' => $item->soal->pertanyaan,
-        //         'tipe_soal' => intval($item->soal->tipe_soal),
-        //         'layout' => intval($item->soal->layout),
-        //     ],
-        //     'ragu_ragu' => $item->ragu_ragu,
-        // ];
-
-        // var_dump($result);
-        // exit;
-
-        return SendResponse::acceptCustom(['data' => $new_soals, 'detail' => $ujian_siswa]);
-
-        // $nextQuestion = Soal::whereNotIn('id', $soalAlreadyAnsweredIds)
-        //     ->where('banksoal_id', $bank_soal_id)
-        //     ->where('tingkat_kesulitan', '>', $currentAbility)
-        //     ->pluck([
-        //         'id',
-        //         'banksoal_id',
-        //         'pertanyaan',
-        //         'tipe_soal',
-        //         'audio',
-        //         'direction',
-        //         'layout',
-        //     ])
-        //     ->get();
-
-        // $nextQuestion = DB::table('soals')
-        //     ->whereNotIn('id', $soalAlreadyAnsweredIds)
-        //     ->select([
-        //         'id',
-        //         'banksoal_id',
-        //         'pertanyaan',
-        //         'tipe_soal',
-        //         'audio',
-        //         'direction',
-        //         'layout',
-        //     ])
-        //     ->limit(1)
-        //     ->get();
-
-        // if (!$nextQuestion) {
-        //     $nextQuestion = Soal::whereNotIn('id', $soalAlreadyAnsweredIds)
-        //         ->where('banksoal_id', $bank_soal_id)
-        //         ->orderBy('tingkat_kesulitan', 'asc')
-        //         ->select([
-        //             'id',
-        //             'banksoal_id',
-        //             'pertanyaan',
-        //             'tipe_soal',
-        //             'audio',
-        //             'direction',
-        //             'layout',
-        //         ])
-        //         ->get();
-        // }
-
-        // $soal_jawabans = DB::table('jawaban_soals')
-        //     ->whereIn('soal_id', $nextQuestion->pluck('id')->toArray());
-
-        // $soal_jawabans = $soal_jawabans->inRandomOrder();
-
-        // $soal_jawabans = $soal_jawabans->get();
-        // $soal_jawabans_indexeds = $soal_jawabans->groupBy('soal_id');
-
-        // $item = new stdClass;
-        // $nextQuestion = $nextQuestion->map(function ($item) use ($soal_jawabans_indexeds) {
-        //     $item->jawabans = $soal_jawabans_indexeds->get($item->id, new Collection())->values();
-        //     return $item;
-        // });
-        // var_dump($item);
-        // exit;
-        // $result[] = [
-        //     'id' => $item->id,
-        //     'banksoal_id' => $item->banksoal_id,
-        //     'soal_id' => $item->soal_id,
-        //     'jawab' => $item->jawab,
-        //     'esay' => $item->esay,
-        //     'jawab_complex' => json_decode($item->jawab_complex),
-        //     'benar_salah' => $item->benar_salah,
-        //     'setuju_tidak' => $item->setuju_tidak,
-        //     'answered' => $item->answered,
-        //     'soal' => [
-        //         // 'audio' => $item->soal->audio,
-        //         'banksoal_id' => $item->soal->banksoal_id,
-        //         'direction' => $item->soal->direction,
-        //         'id' => $item->soal->id,
-        //         'jawabans' => $jawabans,
-        //         'pertanyaan' => $item->soal->pertanyaan,
-        //         'tipe_soal' => intval($item->soal->tipe_soal),
-        //         'layout' => intval($item->soal->layout),
-        //     ],
-        //     'ragu_ragu' => $item->ragu_ragu,
-        // ];
-        var_dump($result);
-        exit;
-        return $result;
-
-        // $soals_indexeds = $soals->keyBy('id');
-        // $find = $find->map(function ($item) use ($soals_indexeds) {
-        //     $item->soal = $soals_indexeds->get($item->soal_id);
-        //     return $item;
-        // });
-
-        // var_dump($nextQuestion);
-        // exit;
-        return $nextQuestion;
     }
-
-    // public function getNextQuestion($currentAbility, $jawabanPesertaId)
-    // {
-    //     // Implementasi perhitungan kemampuan berdasarkan model IRT 3PL
-    //     // Ini melibatkan logika kompleks dan mungkin integrasi dengan perangkat lunak statistik
-
-    //     // Contoh sederhana: pilih butir selanjutnya sesuai kemampuan peserta
-    //     $nextQuestion = DB::table('banksoals')
-    //         ->where('b', '>', $currentAbility)
-    //         ->orderBy('b', 'asc')
-    //         ->first();
-
-    //     if (!$nextQuestion) {
-    //         $nextQuestion = DB::table('banksoals')
-    //             ->orderBy('b', 'asc')
-    //             ->first();
-    //     }
-
-    //     if (!$nextQuestion) {
-    //         return null;
-    //     }
-
-    //     return $nextQuestion;
-    // }
 
     /**
      * Fungsi untuk menghitung dan memperbarui estimasi kemampuan peserta

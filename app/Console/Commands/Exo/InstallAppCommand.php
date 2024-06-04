@@ -37,7 +37,7 @@ class InstallAppCommand extends Command
      */
     public function handle()
     {
-        if ($this->confirm('TestMate CBT akan dilakukan fresh installation, with to continue?')) {
+        if ($this->confirm('TestMate CAT akan dilakukan fresh installation, with to continue?')) {
 
             $this->call('migrate:fresh');
 

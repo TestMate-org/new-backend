@@ -139,13 +139,9 @@ final class UjianService extends AbstractService
         } else {
             $data = $query->first();
         }
-        // var_dump($data);
-        // exit;
 
         $jadwal = Jadwal::where('id', $data['jadwal_id'])->first();
         $banksoal = Banksoal::where('id', $jadwal->banksoal_id)->first();
-        // $data instanceof Model ? $data : $data = null;
-        // $data->jadwal = $jadwal;
         $jumlah_soal = $banksoal->jumlah_soal;
         $data = [
             'id' => $data->id,
@@ -445,8 +441,6 @@ final class UjianService extends AbstractService
 
         $find = DB::table('jawaban_pesertas')
             ->where([
-                // 'peserta_id' => $peserta_id,
-                // 'jadwal_id' => $jadwal_id,
                 'soal_id' => $soal_now_id,
             ])
             ->select([
@@ -774,6 +768,28 @@ final class UjianService extends AbstractService
 
             $hasil = $hasil_pg + $hasil_listening + $hasil_mpg + $hasil_isiang_singkat + $hasil_menjodohkan + $hasil_mengurutkan + $hasil_benar_salah;
 
+            // Fetch the responses
+            $allJawabanPeserta = DB::table('jawaban_pesertas')
+                ->join('soals', 'jawaban_pesertas.soal_id', '=', 'soals.id') // Assuming the foreign key is soal_id
+                ->where([
+                    'jawaban_pesertas.jadwal_id' => $jadwal_id,
+                    'jawaban_pesertas.peserta_id' => $peserta_id,
+                ])
+                ->select('soals.a', 'soals.b', 'soals.c', 'jawaban_pesertas.iscorrect') // Select IRT parameters and correctness
+                ->get();
+
+            // Construct the array of IRT parameters for each question
+            $soals = $allJawabanPeserta->map(function ($item) {
+                return ['a' => $item->a, 'b' => $item->b, 'c' => $item->c];
+            })->toArray();
+
+            // Optionally, if you need the correctness binary as well, you might create a separate array or combine them.
+            $responsesBinary = $allJawabanPeserta->map(function ($item) {
+                return $item->iscorrect ? 1 : 0; // Assuming 'iscorrect' indicates correctness directly
+            })->toArray();
+
+            $finalAbilityEstimate = $this->calculateFinalAbility($responsesBinary, $soals);
+
             DB::table('hasil_ujians')->insert([
                 'id' => Str::uuid()->toString(),
                 'ujian_id' => $ujian_id,
@@ -798,6 +814,7 @@ final class UjianService extends AbstractService
                 'hasil' => $hasil,
                 'point_esay' => 0,
                 'point_setuju_tidak' => 0,
+                'theta_akhir' => $finalAbilityEstimate,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -807,6 +824,38 @@ final class UjianService extends AbstractService
         }
 
         return true;
+    }
+
+    public function calculateFinalAbility($responses, $items)
+    {
+        // Initial ability estimate
+        $abilityEstimate = 1;
+        // Learning rate, determines the size of the ability adjustment
+        $learningRate = 0.1;
+
+        // Iterate through all items and responses
+        foreach ($responses as $index => $response) {
+            $item = $items[$index];
+
+            // Calculate the probability of a correct response
+            $probability = $this->calculate3PLProbability($abilityEstimate, $item['a'], $item['b'], $item['c']);
+
+            // Update the ability estimate based on the response
+            if ($response == 1) { // Correct response
+                $abilityEstimate += (1 - $probability) * $learningRate;
+            } else { // Incorrect response
+                $abilityEstimate -= $probability * $learningRate;
+            }
+        }
+
+        return $abilityEstimate;
+    }
+
+    public function calculate3PLProbability($theta, $a, $b, $c)
+    {
+        $e = exp(-$a * ($theta - $b));
+        $p = $c + (1 - $c) / (1 + $e);
+        return $p;
     }
 
     /**

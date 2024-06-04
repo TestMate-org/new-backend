@@ -245,7 +245,7 @@ class SettingController extends Controller
     public function infoApp()
     {
         return response()->json([
-            'name' => 'TestMate CBT',
+            'name' => 'TestMate CAT',
             'version' => config('testmate.version.code'),
             'code' => config('testmate.version.name'),
             'author' => 'TestMate',

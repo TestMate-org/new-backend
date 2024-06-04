@@ -19,8 +19,8 @@
             class="h-12 w-12 object-cover" />
           </div>
           <div class="flex flex-col">
-            <p class="font-semibold">{{ setting.sekolah.nama != '' ? setting.sekolah.nama : 'TestMateCBT' }}</p>
-            <p class="text-sm text-gray-100">CBT-Application</p>
+            <p class="font-semibold">{{ setting.sekolah.nama != '' ? setting.sekolah.nama : 'TestMateCAT' }}</p>
+            <p class="text-sm text-gray-100">CAT-Application</p>
           </div>
         </div> -->
       </div>

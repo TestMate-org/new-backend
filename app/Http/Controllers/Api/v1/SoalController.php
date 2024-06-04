@@ -86,12 +86,12 @@ class SoalController extends Controller
 
             $totalPilihan = count($request->pilihan);
             $a = 1; //Discrimination
-            $b = 0.5; //Difficulty
+            $b = $request->tingkatkesulitan; //Difficulty
             $c = 1 / $totalPilihan; //Guessing
 
-            $data['daya_beda'] = $a;
-            $data['tingkat_kesulitan'] = $b;
-            $data['tebak_parameter'] = $c;
+            $data['a'] = $a;
+            $data['b'] = $b;
+            $data['c'] = $c;
 
             $soal = Soal::create($data);
 

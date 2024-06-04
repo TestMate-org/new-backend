@@ -14,7 +14,7 @@ class AddFinishedToOputput
      */
     public function handle(CommandFinished $event): void
     {
-        $message = sprintf('Thanks for using TestMate CBT %s version %s', config('testmate.version.name'), config('testmate.version.code'));
+        $message = sprintf('Thanks for using TestMate CAT %s version %s', config('testmate.version.name'), config('testmate.version.code'));
         $event->output->writeln('');
         $event->output->writeln($message);
     }

@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class ModifyingWithIrtInJawabanPesertasTable extends Migration
+class ModifyingHasilUjiansTable extends Migration
 {
     /**
      * Run the migrations.
@@ -13,8 +13,7 @@ class ModifyingWithIrtInJawabanPesertasTable extends Migration
      */
     public function up()
     {
-        Schema::table('jawaban_pesertas', function (Blueprint $table) {
-            $table->integer('urutan')->nullable();
+        Schema::table('hasil_ujians', function (Blueprint $table) {
             $table->float('theta_awal')->nullable();
             $table->float('theta_akhir')->nullable();
         });
@@ -27,10 +26,9 @@ class ModifyingWithIrtInJawabanPesertasTable extends Migration
      */
     public function down()
     {
-        Schema::table('jawaban_pesertas', function (Blueprint $table) {
+        Schema::table('hasil_ujians', function (Blueprint $table) {
             $table->dropColumn('theta_akhir');
             $table->dropColumn('theta_awal');
-            $table->dropColumn('urutan');
         });
     }
 }

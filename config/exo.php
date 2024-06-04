@@ -2,7 +2,7 @@
 
 return [
     /*
-    | Current TestMate CBT version
+    | Current TestMate CAT version
     | @name bakwan
     | @code 3.0.0
     |

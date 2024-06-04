@@ -65,11 +65,16 @@ class PilihanGandaService implements TipeSoalInterface
         return [];
     }
 
-    public static function getSoalNext($peserta, $banksoal, $jadwal)
+    public static function getSoalNext($peserta, $banksoal, $jadwal, $jawabanPesertaNow = null)
     {
         # Setup
         $max_soal = $banksoal->jumlah_soal;
         $setting = $jadwal['setting'];
+
+        $currentProbability = $jawabanPesertaNow->theta_akhir; // Probability of answering the current question correctly
+        $currentDifficulty = $jawabanPesertaNow->soal->b; // Difficulty level of the current question
+
+        $nextQuestionDifficulty = self::getNextQuestionDifficulty($currentProbability, $currentDifficulty);
 
         $soalAlreadyAnsweredIds = JawabanPeserta::where([
             'peserta_id' => $peserta->id,
@@ -81,7 +86,16 @@ class PilihanGandaService implements TipeSoalInterface
             $pg = DB::table('soals')->where([
                 'banksoal_id' => $banksoal->id,
                 'tipe_soal' => SoalConstant::TIPE_PG,
-            ])->whereNotIn('id', $soalAlreadyAnsweredIds);
+
+            ])
+                ->whereNotIn('id', $soalAlreadyAnsweredIds)
+            ;
+
+            if ($jawabanPesertaNow->iscorrect == 1) {
+                $pg->where('b', '>=', $nextQuestionDifficulty);
+            } else {
+                $pg->where('b', '<', $nextQuestionDifficulty);
+            }
 
             if ($setting['acak_soal'] == "1") {
                 $pg = $pg->inRandomOrder();
@@ -110,6 +124,20 @@ class PilihanGandaService implements TipeSoalInterface
             return $soal_pg;
         }
         return [];
+    }
+
+    public static function getNextQuestionDifficulty($currentProbability, $currentDifficulty, $threshold = 0.7, $difficultyStep = 0.5)
+    {
+        // Check if the examinee performed above the threshold
+        if ($currentProbability >= $threshold) {
+            // Increase difficulty for the next question
+            $nextDifficulty = min($currentDifficulty + $difficultyStep, 2); // Assuming 2 is the max difficulty
+        } else {
+            // Decrease difficulty for the next question
+            $nextDifficulty = max($currentDifficulty - $difficultyStep, -2); // Assuming -2 is the easiest level
+        }
+
+        return $nextDifficulty;
     }
 
     /**

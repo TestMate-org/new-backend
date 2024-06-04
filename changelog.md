@@ -1,4 +1,4 @@
-### EXO CBT CHANGE LOG
+### EXO CAT CHANGE LOG
 ### 3.17.0-RELEASE
 - fix issue order when import soal docx 2, docx 1 and html
 - fix issue esay correction not show

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>TestMateCBT</title>
+    <title>TestMateCAT</title>
 </head>
 <body>
     <em>TestMate Services is running</em>
